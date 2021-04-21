@@ -4,6 +4,7 @@
 
 package io.ktor.client.features.auth.providers
 
+import io.ktor.client.call.*
 import io.ktor.client.features.auth.*
 import io.ktor.client.request.*
 import io.ktor.http.*
@@ -12,13 +13,13 @@ import io.ktor.http.auth.*
 /**
  * Add [BasicAuthProvider] to client [Auth] providers.
  */
-fun Auth.bearer(block: BearerAuthConfig.() -> Unit) {
+public fun Auth.bearer(block: BearerAuthConfig.() -> Unit) {
     with(BearerAuthConfig().apply(block)) {
-        providers.add(BearerAuthProvider(refreshTokensFun, loadTokensFun, true, realm))
+        providers.add(BearerAuthProvider(_refreshTokens, _loadTokens, true, realm))
     }
 }
 
-data class BearerTokens(
+public data class BearerTokens(
     val accessToken: String,
     val refreshToken: String
 )
@@ -26,20 +27,27 @@ data class BearerTokens(
 /**
  * [DigestAuthProvider] configuration.
  */
-@Suppress("KDocMissingDocumentation")
-class BearerAuthConfig {
-    var refreshTokensFun: suspend () -> BearerTokens? = { null }
-    var loadTokensFun: suspend () -> BearerTokens? = { null }
-    var realm: String? = null
+public class BearerAuthConfig {
+    internal var _refreshTokens: suspend (call: HttpClientCall) -> BearerTokens? = { null }
+    internal var _loadTokens: suspend () -> BearerTokens? = { null }
+
+    public var realm: String? = null
+
+    public fun refreshTokens(block: suspend (call: HttpClientCall) -> BearerTokens?) {
+        _refreshTokens = block
+    }
+
+    public fun loadTokens(block: suspend () -> BearerTokens?) {
+        _loadTokens = block
+    }
 }
 
 /**
  * Client digest [AuthProvider].
  */
-@Suppress("KDocMissingDocumentation")
-class BearerAuthProvider(
-    val refreshTokensFun: suspend () -> BearerTokens?,
-    val loadTokensFun: suspend () -> BearerTokens?,
+public class BearerAuthProvider(
+    public val refreshTokens: suspend (call: HttpClientCall) -> BearerTokens?,
+    public val loadTokens: suspend () -> BearerTokens?,
     override val sendWithoutRequest: Boolean = true,
     private val realm: String?
 ) : AuthProvider {
@@ -51,33 +59,29 @@ class BearerAuthProvider(
      */
     override fun isApplicable(auth: HttpAuthHeader): Boolean {
         if (auth.authScheme != AuthScheme.Bearer) return false
-        if (realm != null) {
-            if (auth !is HttpAuthHeader.Parameterized) return false
-            return auth.parameter("realm") == realm
-        }
-        return true
+        if (realm == null) return true
+        if (auth !is HttpAuthHeader.Parameterized) return false
+
+        return auth.parameter("realm") == realm
     }
 
     /**
      * Add authentication method headers and creds.
      */
     override suspend fun addRequestHeaders(request: HttpRequestBuilder) {
-        val token = cachedBearerTokens ?: loadTokensFun()
+        val token = cachedBearerTokens ?: loadTokens() ?: return
         request.headers {
-            token?.let {
-                val tokenValue = "Bearer ${it.accessToken}"
-                if(contains(HttpHeaders.Authorization)) {
-                    remove(HttpHeaders.Authorization)
-                }
-                append(HttpHeaders.Authorization, tokenValue)
+            val tokenValue = "Bearer ${token.accessToken}"
+            if (contains(HttpHeaders.Authorization)) {
+                remove(HttpHeaders.Authorization)
             }
+            append(HttpHeaders.Authorization, tokenValue)
         }
     }
 
-    suspend fun refreshToken(): BearerTokens? {
-        cachedBearerTokens = refreshTokensFun()
+    public suspend fun refreshToken(call: HttpClientCall): BearerTokens? {
+        cachedBearerTokens = refreshTokens(call)
         return cachedBearerTokens
     }
-
 
 }
