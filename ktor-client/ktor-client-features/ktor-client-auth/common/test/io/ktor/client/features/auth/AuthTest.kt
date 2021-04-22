@@ -92,6 +92,8 @@ class AuthTest : ClientLoader() {
                     loadTokens { null }
                 }
             }
+
+            expectSuccess = false
         }
 
         test { client ->
@@ -110,6 +112,8 @@ class AuthTest : ClientLoader() {
                     loadTokens { BearerTokens("invalid", "refresh") }
                 }
             }
+
+            expectSuccess = false
         }
 
         test { client ->

@@ -41,9 +41,8 @@ public class Auth(
                 if (origin.request.attributes.contains(circuitBreaker)) return@intercept origin
 
                 var call = origin
-                val candidateProviders = HashSet(feature.providers).apply {
-                    removeAll(feature.alwaysSend - feature.providers.find { it is BearerAuthProvider })
-                }
+
+                val candidateProviders = HashSet(feature.providers)
 
                 while (call.response.status == HttpStatusCode.Unauthorized) {
                     val headerValue = call.response.headers[HttpHeaders.WWWAuthenticate]
@@ -53,11 +52,7 @@ public class Auth(
 
                     val authHeader = parseAuthorizationHeader(headerValue) ?: return@intercept call
                     val provider = candidateProviders.find { it.isApplicable(authHeader) } ?: return@intercept call
-                    when(provider) {
-                        is BearerAuthProvider -> {
-                            provider.refreshToken(call) ?: return@intercept call
-                        }
-                    }
+                    if (!provider.refreshToken(call)) return@intercept call
 
                     candidateProviders.remove(provider)
 
@@ -71,7 +66,6 @@ public class Auth(
                 return@intercept call
             }
         }
-
     }
 }
 
